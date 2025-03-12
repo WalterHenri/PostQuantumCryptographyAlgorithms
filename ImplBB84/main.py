@@ -1,7 +1,7 @@
+import aer
 from qiskit import QuantumCircuit
-from qiskit.visualization import plot_histogram
+from qiskit_aer import AerSimulator
 import numpy as np
-
 
 def bb84_protocolo(n_bits=100, erro_canal=0.05, presenca_eve=False):
     """
@@ -26,7 +26,7 @@ def bb84_protocolo(n_bits=100, erro_canal=0.05, presenca_eve=False):
     bob_resultados = []
 
     # Simulador quântico
-    simulator = Aer.get_backend('qasm_simulator')
+    simulator = AerSimulator()
 
     # Para cada bit, Alice prepara um qubit e Bob mede
     for i in range(n_bits):
@@ -44,27 +44,27 @@ def bb84_protocolo(n_bits=100, erro_canal=0.05, presenca_eve=False):
         if presenca_eve:
             # Eve mede em uma base aleatória e reenvia
             eve_base = np.random.randint(0, 2)
-            if eve_base == 1 and alice_bases[i] == 0:
-                qc.h(0)  # Eve mudar para base Hadamard
-            elif eve_base == 0 and alice_bases[i] == 1:
-                qc.h(0)  # Eve mudar para base computacional
+            eve_qc = qc.copy()  # Cria uma cópia do circuito para medição de Eve
 
-            # Eve mede e prepara novo estado
-            qc.measure(0, 0)
-            qc.reset(0)
-
-            # Eve reenvia o que mediu
-            resultado = execute(qc, simulator, shots=1).result().get_counts()
-            bit_medido = int(list(resultado.keys())[0])
-            if bit_medido == 1:
-                qc = QuantumCircuit(1, 1)
-                qc.x(0)
-            else:
-                qc = QuantumCircuit(1, 1)
-
-            # Eve reenvia na base que ela acha que foi a original
+            # Eve aplica H gate se sua base for 1 (Hadamard)
             if eve_base == 1:
-                qc.h(0)
+                eve_qc.h(0)
+
+            # Eve mede o circuito
+            eve_qc.measure(0, 0)
+            resultado = simulator.run(eve_qc, shots=1).result().get_counts(eve_qc)
+            bit_medido = int(list(resultado.keys())[0])
+
+            # Eve prepara um novo circuito baseado no que mediu
+            new_qc = QuantumCircuit(1, 1)
+            if bit_medido == 1:
+                new_qc.x(0)
+
+            # Se Eve usou base Hadamard, aplica H gate novamente
+            if eve_base == 1:
+                new_qc.h(0)
+
+            qc = new_qc  # Substitui o circuito original pelo novo preparado por Eve
 
         # Simulação de erro no canal
         if np.random.random() < erro_canal:
@@ -77,7 +77,7 @@ def bb84_protocolo(n_bits=100, erro_canal=0.05, presenca_eve=False):
         qc.measure(0, 0)
 
         # Executa o circuito e obtém resultados
-        resultado = execute(qc, simulator, shots=1).result().get_counts()
+        resultado = simulator.run(qc, shots=1).result().get_counts(qc)
 
         # Armazena o resultado de Bob
         bit_medido = int(list(resultado.keys())[0])
@@ -105,13 +105,10 @@ def bb84_protocolo(n_bits=100, erro_canal=0.05, presenca_eve=False):
         'tamanho_chave': len(alice_chave)
     }
 
-
 # Executa simulação sem espião
 resultado_sem_eve = bb84_protocolo(n_bits=1000, erro_canal=0.05, presenca_eve=False)
-print(
-    f"Sem espião: Taxa de erro: {resultado_sem_eve['taxa_erro']:.4f}, Tamanho da chave: {resultado_sem_eve['tamanho_chave']}")
+print(f"Sem espião: Taxa de erro: {resultado_sem_eve['taxa_erro']:.4f}, Tamanho da chave: {resultado_sem_eve['tamanho_chave']}")
 
 # Executa simulação com espião
 resultado_com_eve = bb84_protocolo(n_bits=1000, erro_canal=0.05, presenca_eve=True)
-print(
-    f"Com espião: Taxa de erro: {resultado_com_eve['taxa_erro']:.4f}, Tamanho da chave: {resultado_com_eve['tamanho_chave']}")
+print(f"Com espião: Taxa de erro: {resultado_com_eve['taxa_erro']:.4f}, Tamanho da chave: {resultado_com_eve['tamanho_chave']}")
