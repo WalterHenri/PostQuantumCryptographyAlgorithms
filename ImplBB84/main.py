@@ -1,4 +1,4 @@
-import aer
+import qiskit_aer
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 import numpy as np
